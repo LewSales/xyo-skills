@@ -5,11 +5,18 @@ import {
 import { assertExtendsBase } from './shared-assertions.js'
 import { xl1MonorepoTemplate } from './xl1-monorepo.js'
 
-assertExtendsBase(xl1MonorepoTemplate)
+assertExtendsBase(xl1MonorepoTemplate, { omittedScripts: ['test:watch'] })
 
 describe('xl1-monorepo preset specifics', () => {
-  it('declares pnpm-workspace.yaml as a written file', () => {
-    expect(xl1MonorepoTemplate.files.some(f => f.dest === 'pnpm-workspace.yaml')).toBe(true)
+  // pnpm-workspace.yaml is generated (workspace-yaml.ts) so it carries the
+  // pnpm 12 settings; the template only contributes the package globs.
+  it('declares the workspace package globs for the generated pnpm-workspace.yaml', () => {
+    expect(xl1MonorepoTemplate.workspacePackages).toEqual(['packages/*'])
+    expect(xl1MonorepoTemplate.files.some(f => f.dest === 'pnpm-workspace.yaml')).toBe(false)
+  })
+
+  it('drops base\'s `test:watch: vitest` (meaningless at the root)', () => {
+    expect(xl1MonorepoTemplate.scripts).not.toHaveProperty('test:watch')
   })
 
   it('declares a top-level README', () => {
@@ -17,17 +24,27 @@ describe('xl1-monorepo preset specifics', () => {
   })
 
   it('uses workspace orchestration scripts (pnpm -r)', () => {
+    // `build` relies on pnpm -r's topological order to build shared first.
     expect(xl1MonorepoTemplate.scripts.build).toBe('pnpm -r run build')
-    expect(xl1MonorepoTemplate.scripts.lint).toBe('pnpm -r run lint')
-    expect(xl1MonorepoTemplate.scripts.typecheck).toBe('pnpm -r run typecheck')
-    expect(xl1MonorepoTemplate.scripts.test).toBe('pnpm -r run test')
+    expect(xl1MonorepoTemplate.scripts.lint).toBe('pnpm run build:shared && pnpm -r run lint')
+    expect(xl1MonorepoTemplate.scripts.typecheck).toBe('pnpm run build:shared && pnpm -r run typecheck')
+    expect(xl1MonorepoTemplate.scripts.test).toBe('pnpm run build:shared && pnpm -r run test')
+  })
+
+  it('builds shared before any script that consumes its dist/', () => {
+    // Regression: app/service resolve @<scope>/shared through its exports map
+    // to dist/*.d.ts + dist/*.js, which only exist after shared's build.
+    expect(xl1MonorepoTemplate.scripts['build:shared']).toBe('pnpm --filter ./packages/shared run build')
+    for (const script of ['dev', 'typecheck', 'lint', 'lint:fix', 'test']) {
+      expect(xl1MonorepoTemplate.scripts[script]).toMatch(/^pnpm run build:shared && /)
+    }
   })
 
   it('declares a parallel `dev` script so app + service run concurrently', () => {
     // Locks in the browser-service-wiring prescription: one command at the
     // workspace root brings up both processes. --parallel is required so they
     // run concurrently (default `pnpm -r run` is sequential).
-    expect(xl1MonorepoTemplate.scripts.dev).toBe('pnpm -r --parallel run dev')
+    expect(xl1MonorepoTemplate.scripts.dev).toBe('pnpm run build:shared && pnpm -r --parallel run dev')
   })
 
   it('skips emitting tsconfig.json (workspace root has no source)', () => {
