@@ -25,6 +25,9 @@ export interface Template {
   // the template's `tsconfig` field is still required for type-shape
   // consistency but is never written to disk.
   omitTsconfig?: boolean
+  // Extra top-level package.json fields (e.g. `exports` for a library that
+  // other workspace members import). Written right after `type`.
+  packageJson?: Record<string, unknown>
   scripts: Record<string, string>
   smokeTest?: { pnpmScript: string }
   tsconfig: {
@@ -32,4 +35,8 @@ export interface Template {
     extends: string
     include?: string[]
   }
+  // Package globs for the `packages:` key of the generated pnpm-workspace.yaml.
+  // Set only on a workspace root (xl1-monorepo). Every non-member project gets
+  // a pnpm-workspace.yaml for its pnpm settings; members get none.
+  workspacePackages?: string[]
 }

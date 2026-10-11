@@ -45,7 +45,7 @@ pnpm exec playwright install chromium
 ### Preferred: `@ariestools/vitest-config`
 
 For monorepos that follow org-standard `spec/` layout, use the shared preset from
-[xy-toolchain testing](../xy-toolchain/testing.md). The consumer injects the
+[`xy-toolchain` (ariestools-skills) — testing § Shared preset](https://github.com/ariestools/ariestools-skills/blob/main/skills/xy-toolchain/testing.md#shared-preset-ariestoolsvitest-config). The consumer injects the
 Playwright provider so Playwright stays optional for node-only repos:
 
 ```ts
@@ -101,7 +101,9 @@ export default defineConfig({
         test: {
           name: 'browser',
           include: ['src/spec/**/*.spec.ts', 'packages/**/src/**/spec/**/*.spec.ts'],
-          exclude: ['**/spec/node/**'], // node-only specs stay out of the browser run
+          // `exclude` replaces Vitest's defaults, so restate them: node-only specs,
+          // dependencies, and Claude Code worktrees under .claude/ stay out
+          exclude: ['**/spec/node/**', '**/node_modules/**', '**/.claude/**'],
           setupFiles: ['test/setup/browser.ts'],
           browser: {
             enabled: true,
@@ -119,7 +121,10 @@ export default defineConfig({
 Keep cross-environment specs in `spec/` (they run in both node and browser
 projects when both exist), browser-only specs under `spec/browser/` (or where
 the browser project includes them), and node-only specs under `spec/node/`
-(excluded above).
+(excluded above). The `node_modules` and `.claude` entries mirror the shared
+preset's `XY_VITEST_BROWSER_EXCLUDE`, so a broadened `include` never picks up
+dependency specs or the full checkouts Claude Code keeps under
+`.claude/worktrees/**`.
 
 ### Network mocking (MSW)
 
@@ -186,6 +191,6 @@ its README and scripts. Otherwise create one as described in
 
 - [xl1-testing](SKILL.md) — the testing barrel this approach belongs to.
 - [Local chain via the vitest harness](local-chain-vitest.md) — the XL1 vitest preset, and the `browserOnly` default that silently narrows this project.
-- [xy-toolchain testing](../xy-toolchain/testing.md) — `@ariestools/vitest-config`, `spec/` layout, `xy test` / `xy retest`.
+- [`xy-toolchain` (ariestools-skills) — testing](https://github.com/ariestools/ariestools-skills/blob/main/skills/xy-toolchain/testing.md) — `@ariestools/vitest-config`, `spec/` layout, `xy test` / `xy retest`.
 - [Full-app Playwright e2e](https://github.com/ariestools/ariestools-skills/blob/main/skills/xy-toolchain/testing.md#full-app-playwright-e2e) (xy-toolchain, canonical in ariestools-skills) — where a full-app e2e package lives and how to run it with pnpm. Prefer the repo's own e2e package (often `packages/e2e`) when one exists.
 - [Browser Gateway](../xl1-knowledge/gateway-browser.md) — the in-page gateway / `InPageGatewaysProvider` code this mode is well-suited to test.

@@ -5,14 +5,14 @@ Read this pattern when your application needs a **replayable, source-attributed 
 This is an **application-layer substrate**, not part of core XL1 consensus. Peer of [Inscription Substrate](inscription-substrate.md): inscriptions own transferable content artifacts; Statement Graph records signed assertions about objects.
 
 **Builds on:**
-- [Chain Data Indexing](chain-data-indexing-protocol.md) — finalized-only replay, schema filtering
+- [Chain Data Indexing](chain-data-indexing-protocol.md) — finalized-only replay, two-step reads (schemas on the chain, bodies by hash)
 - [Finalized block streams](../xl1-knowledge/gateway.md#finalized-block-stream) — ordered gap-aware delivery for indexers
 - [Datalakes](../xl1-knowledge/datalakes.md) — object bodies referenced by hash
 - [Declarative Payloads, Structural Authorship](../xyo-knowledge/best-practices.md) — authorship on the BoundWitness, not invented payload `from` fields
 
-**Used by:** LifeHash, Event Kit wake grants, Edge Node statement views, Webble, Immortalizer. For wallet-authenticated wake delivery on top of grants, see [Authenticated Wake Delivery](authenticated-wake-delivery.md).
+**Used by:** LifeHash, Event Kit wake grants and handshake objects, Edge Node statement views, Webble, Immortalizer, Service Kit finalized service/datalake descriptor views (`@xyo-network/service-kit-statement-graph`). For wallet-authenticated wake delivery on top of grants, see [Authenticated Wake Delivery](authenticated-wake-delivery.md).
 
-**Maturity:** the six `@xyo-network/xl1-statement-graph-*` packages publish publicly to npm under LGPL-3.0-only and share one version; the current minor (**0.7.x** at this writing) carries the current fold. Consumers pin a minor, so a `~0.5.x` range (or `^0.5` peer range) picks up neither 0.6.0 (SDK resume integrity) nor 0.7.0 (engine apply atomicity, first-declaration object rows, engine-actor host checks, fold preconditions, the strict gate profile): adopt each minor explicitly and move every Statement Graph pin together. Prefer importing published packages over copying fold logic. Publishing Claims needs a chain whose consensus accepts the unversioned `{ source, subject, hashes }` Claim as an elevated payload. The upstream repo proves that path on a local dev chain, which is not Sequence or Mainnet qualification — confirm the target network's rollout before publishing there.
+**Maturity:** the six `@xyo-network/xl1-statement-graph-*` packages publish publicly to npm under LGPL-3.0-only and share one version; the current minor (**0.7.x** at this writing) carries the current fold. Consumers pin a minor, so a `~0.5.x` range (or `^0.5` peer range) picks up neither 0.6.0 (SDK resume integrity) nor 0.7.0 (engine apply atomicity, first-declaration object rows, engine-actor host checks, fold preconditions, the strict gate profile): adopt each minor explicitly and move every Statement Graph pin together. Event Kit 2.2.x (`@xyo-network/event-kit-statement-graph`) and `@xyo-network/service-kit-statement-graph` 0.2.x still peer `^0.5`, so an app composing either pins Statement Graph `~0.5.x` until they ship a compatible release. Prefer importing published packages over copying fold logic. Publishing Claims needs a chain whose consensus accepts the unversioned `{ source, subject, hashes }` Claim as an elevated payload. The upstream repo proves that path on a local dev chain, which is not Sequence or Mainnet qualification — confirm the target network's rollout before publishing there.
 
 ---
 
@@ -28,7 +28,7 @@ Statement Graph fixes a **single append-only claim verb**, fans hashes into inde
 
 ### Closed lifecycle, open vocabulary
 
-- **One event schema:** `network.xyo.statement.claim` (unversioned — not `.v1`). Import `ClaimSchema`; never retype the NSID.
+- **One event schema:** `network.xyo.statement.claim` (unversioned — not `.v1`). `ClaimSchema`, `MAX_CLAIM_HASHES`, and `ClaimSubjectZod` are owned by `@xyo-network/xl1-protocol` (≥ 5.4) and re-exported by `@xyo-network/xl1-statement-graph-schemas` and `@xyo-network/xl1-sdk`. Import `ClaimSchema`; never retype the NSID.
 - **Fields:** `{ source, subject, hashes }`, all required. `source` is the asserting address. `subject` is an XYO address or a content hash — the thing the Claim is about. `hashes` is 1–`MAX_CLAIM_HASHES` (**256**) unique object data hashes; a duplicate makes the whole event malformed.
 - **Subject is structural aboutness only.** It is identity-bearing (part of the claim key), but the subject need not sign the transaction, and the fold infers no consent, control, existence, truth, or vocabulary-specific authority from it. Those stay consumer/view policy.
 - **No revoke verb, no event-level `target`, no record `state`.** Withdrawal / negation / supersession are ordinary vocabulary payloads that are also claimed; views interpret them.
@@ -202,6 +202,10 @@ Write-time checks (`prepareStatements`, shared by `publishStatements` and the lo
 - the same Claim event twice in one batch throws.
 
 The Claim goes in the elevated (`onChain`) slot and is carried by the block; it is **not inserted into the datalake**. Only object bodies are inserted (readback-verified before broadcast) unless a statement passes `insertObjectBodies: false`. The trusted local runner is the one exception: it has no block carrier, so it persists the explicit Claim body in its local body store.
+
+---
+
+Read side: `scanFinalizedStatements(viewer, store, contract, options)` walks finalized blocks from a gateway viewer, takes each elevated Claim body from its same-block carrier (a missing or mismatched carrier stops the scan), and reads object bodies from `store` by hash — a datalake reader such as `createRestDataLakeViewer(endpoint)`, since no gateway read hydrates off-chain bodies. `resolveVerifiedBodies(store, hashes)` re-hashes every returned body and reports mismatches as `corrupt` rather than folding them. Persist `result.checkpoint` and pass it back as `resumeFrom`.
 
 ---
 
